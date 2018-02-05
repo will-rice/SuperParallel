@@ -11,9 +11,13 @@ int main() {
     double scale = 100;
     double randos[size];
 
-    printf("Random Array Size: %i \n", size);
+    //printf("Random Array Size: %i \n", size);
     random_array(randos, size, scale);
-
+    for (int i=0; i<size; i++)
+    {
+      printf("%f.2 \n",randos[i]);
+    }
+/*
     double total = sum(randos, size);
     printf("Sum:  %.2f \n", total);
 
@@ -28,5 +32,6 @@ int main() {
         printf("Standard Deviation: %.2f \n", stan);
 
     }
+    */
     return 0;
 };
