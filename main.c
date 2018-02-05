@@ -7,7 +7,7 @@
 
 int main() {
 
-    int size = 1000;
+    int size = 10;
     double scale = 100;
     double randos[size];
 
@@ -15,7 +15,7 @@ int main() {
     random_array(randos, size, scale);
     for (int i=0; i<size; i++)
     {
-      printf("%f.2 \n",randos[i]);
+      printf("%.2f \n", randos[i]);
     }
 /*
     double total = sum(randos, size);

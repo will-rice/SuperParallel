@@ -5,7 +5,7 @@
 #include <time.h>
 #include <pthread.h>
 
-static int NUM_THREADS = 0;
+static int NUM_THREADS = 10;
 struct thread_args
 {
   int rank;
@@ -21,10 +21,25 @@ struct thread_args
 
 void* rand_gen(void* args)
 {
-  srand(42);
-  struct thread_args local;
-  local.array[local.rank] = (rand() % (int) local.scale) / local.scale;
+  double* array = ((struct thread_args*) args) -> array;
+  int size = ((struct thread_args*) args) -> size;
+  int rank = ((struct thread_args*) args) -> rank;
+  double scale = ((struct thread_args*) args) -> scale;
+
+  int index_count = size / NUM_THREADS;
+  int first_index = index_count * rank;
+
+  if (rank < (size % NUM_THREADS))
+  {
+    index_count++;
+  }
+  for (int i=first_index; i < (first_index + index_count); i++)
+  {
+    array[i] = rand() % (int) scale / scale;
+  }
+  return NULL;
 }
+
 
 
 void random_array(double array[], int size, double scale)
@@ -37,7 +52,7 @@ void random_array(double array[], int size, double scale)
     master[t].size = size;
     master[t].scale = scale;
     master[t].rank = t;
-    master[t].array[t] = array[t];
+    master[t].array = array;
     pthread_create(&thread_ids[t], NULL, rand_gen, &master[t]);
   }
   for (int i=0; i<NUM_THREADS; i++)
