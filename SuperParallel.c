@@ -5,7 +5,10 @@
 #include <time.h>
 #include <pthread.h>
 
-static int NUM_THREADS = 10;
+static int NUM_THREADS;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+
 struct thread_args
 {
   int rank;
@@ -18,22 +21,21 @@ struct thread_args
   double stdev;
   double variance;
 };
-
 void* rand_gen(void* args)
 {
-  double* array = ((struct thread_args*) args) -> array;
-  int size = ((struct thread_args*) args) -> size;
-  int rank = ((struct thread_args*) args) -> rank;
-  double scale = ((struct thread_args*) args) -> scale;
-
+  struct thread_args* local = (struct thread_args*) args;
+  double* array = local->array;
+  int size = local->size;
+  int rank = local->rank;
+  double scale = local->scale;
   int index_count = size / NUM_THREADS;
-  int first_index = index_count * rank;
-
-  if (rank < (size % NUM_THREADS))
+  int first_index = rank * index_count;
+  if (rank < size % NUM_THREADS)
   {
     index_count++;
   }
-  for (int i=first_index; i < (first_index + index_count); i++)
+
+  for (int i=first_index; i < first_index + index_count; i++)
   {
     array[i] = rand() % (int) scale / scale;
   }
@@ -59,73 +61,103 @@ void random_array(double array[], int size, double scale)
   {
     pthread_join(thread_ids[i], NULL);
   }
+  return;
 }
 
 
 void* sum_increment(void* args)
 {
-  struct thread_args local;
-  pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+  struct thread_args* local = (struct thread_args*) args;
+  double* array = local->array;
+  int rank = local->rank;
+  int size = local->size;
+  int index_count = size / NUM_THREADS;
+  int first_index = rank * index_count;
+  if (rank < size % NUM_THREADS)
+  {
+    index_count++;
+  }
 
-  pthread_mutex_lock(&lock);
-  local.sum += local.array[local.rank];
-  pthread_mutex_unlock(&lock);
+  for (int i=first_index; i < first_index + index_count; i++)
+  {
+    local->sum += array[i];
+  }
+
+  pthread_exit(args);
 }
 
 
 double sum(double array[], int size)
 {
-  struct thread_args args;
-
+  struct thread_args master[NUM_THREADS];
   pthread_t threads[NUM_THREADS];
-
+  double sum = 0.0;
     for (int i=0; i<NUM_THREADS; i++)
     {
-      args.array[i] = array[i];
-      pthread_create(&threads[i], NULL, sum_increment, NULL);
+
+      master[i].array = array;
+      master[i].sum = sum;
+      master[i].rank = i;
+      master[i].size = size;
+      pthread_create(&threads[i], NULL, sum_increment, &master[i]);
     }
 
     for (int i=0; i<NUM_THREADS; i++)
     {
       pthread_join(threads[i], NULL);
+      sum += master[i].sum;
     }
 
-    return args.sum;
+    return sum;
 }
 
 void* std_increment(void* args)
 {
-  struct thread_args local;
-  pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+  struct thread_args* local = (struct thread_args*) args;
+  double* array = local->array;
+  int size = local->size;
+  int rank = local->rank;
+  double mean = local->mean;
+  int index_count = size / NUM_THREADS;
+  int first_index = rank * index_count;
+  if (rank < size % NUM_THREADS)
+  {
+    index_count++;
+  }
 
-  pthread_mutex_lock(&lock);
-  local.variance += (
-    (local.array[local.rank] - local.mean) *
-    (local.array[local.rank] - local.mean)) /
-     local.size;
-
-  local.stdev += sqrt(local.variance);
-  pthread_mutex_unlock(&lock);
+  for (int i=first_index; i < first_index + index_count; i++)
+  {
+    local->variance += (array[i] - mean) * (array[i] - mean);
+  }
+  pthread_exit(args);
 }
 
 /*TODO: Look at stdev formula to verify*/
 double stdev(double array[], int size){
 
-  struct thread_args master;
-  master.mean = master.sum / master.size;
+  struct thread_args master[NUM_THREADS];
   pthread_t threads[NUM_THREADS];
-
+  double stdev = 0.0;
+  double mean = sum(array, size) / size;
+  double variance = 0.0;
     for (int i=0; i<NUM_THREADS; i++)
     {
-      pthread_create(&threads[i], NULL, std_increment, NULL);
+      master[i].array = array;
+      master[i].mean = mean;
+      master[i].size = size;
+      master[i].rank = i;
+      master[i].variance = variance;
+      pthread_create(&threads[i], NULL, std_increment, &master[i]);
     }
 
     for (int i=0; i<NUM_THREADS; i++)
     {
       pthread_join(threads[i], NULL);
+      stdev += master[i].variance;
     }
-
-    return master.stdev;
+    stdev = stdev / size;
+    stdev = sqrt(stdev);
+    return stdev;
 }
 
 void* smt_increment(void* args)
@@ -133,26 +165,20 @@ void* smt_increment(void* args)
   struct thread_args local;
   double unsmooth = local.array[local.rank];
 
-  double smooth = local.array[local.rank + 1] =
-    local.array[local.rank] * local.weight +
-    (local.array[local.rank - 1] +
-     local.array[local.rank + 1]) *
-     (1 - local.weight) / 2;
-
-  local.array[local.rank] = smooth;
-
 }
 /* @TODO parallelize*/
 void smooth(double array[], int size, double w)
 {
 
-  struct thread_args master;
-  master.weight = w;
+  struct thread_args master[NUM_THREADS];
   pthread_t threads[NUM_THREADS];
 
     for (int i=0; i<NUM_THREADS; i++)
     {
-      master.array[i] = array[i];
+      master[i].array = array;
+      master[i].size = size;
+      master[i].weight = w;
+
       pthread_create(&threads[i], NULL, std_increment, NULL);
     }
 
