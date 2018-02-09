@@ -21,6 +21,12 @@ struct thread_args
   double stdev;
   double variance;
 };
+
+int min(int x, int y)
+{
+  if (x < y){return x;}
+  else{return y;}
+}
 void* rand_gen(void* args)
 {
   struct thread_args* local = (struct thread_args*) args;
@@ -29,7 +35,7 @@ void* rand_gen(void* args)
   int rank = local->rank;
   double scale = local->scale;
   int index_count = size / NUM_THREADS;
-  int first_index = rank * index_count;
+  int first_index = rank * index_count + min(rank, size % NUM_THREADS);
   if (rank < size % NUM_THREADS)
   {
     index_count++;
@@ -72,7 +78,7 @@ void* sum_increment(void* args)
   int rank = local->rank;
   int size = local->size;
   int index_count = size / NUM_THREADS;
-  int first_index = rank * index_count;
+  int first_index = rank * index_count + min(rank, size % NUM_THREADS);
   if (rank < size % NUM_THREADS)
   {
     index_count++;
@@ -80,7 +86,9 @@ void* sum_increment(void* args)
 
   for (int i=first_index; i < first_index + index_count; i++)
   {
+    pthread_mutex_lock(&lock);
     local->sum += array[i];
+    pthread_mutex_unlock(&lock);
   }
 
   pthread_exit(args);
@@ -119,7 +127,7 @@ void* std_increment(void* args)
   int rank = local->rank;
   double mean = local->mean;
   int index_count = size / NUM_THREADS;
-  int first_index = rank * index_count;
+  int first_index = rank * index_count + min(rank, size % NUM_THREADS);
   if (rank < size % NUM_THREADS)
   {
     index_count++;
@@ -127,7 +135,9 @@ void* std_increment(void* args)
 
   for (int i=first_index; i < first_index + index_count; i++)
   {
+    pthread_mutex_lock(&lock);
     local->variance += (array[i] - mean) * (array[i] - mean);
+    pthread_mutex_unlock(&lock);
   }
   pthread_exit(args);
 }
@@ -162,11 +172,34 @@ double stdev(double array[], int size){
 
 void* smt_increment(void* args)
 {
-  struct thread_args local;
-  double unsmooth = local.array[local.rank];
+  struct thread_args* local = (struct thread_args*) args;
+  double* array = local->array;
+  int size = local->size;
+  double weight = local->weight;
+  int rank = local->rank;
+
+  int index_count = size / NUM_THREADS;
+  int first_index = rank * index_count + min(rank, size % NUM_THREADS);
+  if (rank < size % NUM_THREADS)
+  {
+    index_count++;
+  }
+
+  for (int i=first_index; i<first_index + index_count; i++)
+  {
+    pthread_mutex_lock(&lock);
+    array[i + 1] = (array[i] *
+                   weight) +
+                   ((array[i - 1] +
+                    array[i + 1]) *
+                   (1 - weight) / 2);
+    pthread_mutex_unlock(&lock);
+
+  }
+  pthread_exit(args);
 
 }
-/* @TODO parallelize*/
+
 void smooth(double array[], int size, double w)
 {
 
@@ -178,8 +211,9 @@ void smooth(double array[], int size, double w)
       master[i].array = array;
       master[i].size = size;
       master[i].weight = w;
+      master[i].rank = i;
 
-      pthread_create(&threads[i], NULL, std_increment, NULL);
+      pthread_create(&threads[i], NULL, std_increment, &master[i]);
     }
 
     for (int i=0; i<NUM_THREADS; i++)

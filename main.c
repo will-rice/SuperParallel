@@ -3,32 +3,46 @@
 //
 #include "SuperParallel.c"
 #include <stdio.h>
+#include <sys/time.h>
+struct timeval start, end;
 
+int main()
+{
 
-int main() {
-    int threads[] = {1, 2, 4, 8, 16, 32, 64};
-    int size = 100;
+    int size = 0;
     double scale = 100;
     double randos[size];
     set_threads(4);
 
-    printf("Random Array Size: %i \n", size);
+    gettimeofday(&start, NULL);
     random_array(randos, size, scale);
+    gettimeofday(&end, NULL);
+    double seconds = (end.tv_usec - start.tv_usec);
+    printf("Random Array Size: %i Time Elapsed: %f seconds \n",
+           size, seconds);
 
+    gettimeofday(&start, NULL);
     double total = sum(randos, size);
-    printf("Global Sum:  %.2f \n", total);
+    gettimeofday(&end, NULL);
+    seconds = (end.tv_usec - start.tv_usec);
+    printf("Global Sum:  %.2f Time Elapsed: %f seconds \n",
+           total, seconds);
 
+    gettimeofday(&start, NULL);
     double stan = stdev(randos, size);
-    printf("Initial Standard Deviation:  %.2f \n", stan);
+    gettimeofday(&end, NULL);
+    seconds = (end.tv_usec - start.tv_usec);
+    printf(
+      "Initial Standard Deviation:  %f Time Elapsed: %f seconds \n",
+       stan, seconds);
 
-    //for (int i = 0; i < 10; i++) {
-
-        //printf("Smoothed Iteration: %i \n", i + 1);
-        //smooth(randos, size, .01);
-        //stan = stdev(randos, size);
-      //  printf("Standard Deviation: %.2f \n", stan);
-
-    //}
+    gettimeofday(&start, NULL);
+    smooth(randos, size, .01);
+    stan = stdev(randos, size);
+    gettimeofday(&end, NULL);
+    seconds = (end.tv_usec - start.tv_usec);
+    printf("Standard Deviation: %f Time Elapsed: %f seconds \n ",
+           stan, seconds);
 
     return 0;
-};
+}
